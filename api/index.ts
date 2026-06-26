@@ -2,40 +2,49 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+const SECRET = process.env.JWT_SECRET || 'property-group-supervision-secret-key-2026';
+
+// 工具函数: 获取 Supabase 客户端
+function getSupabase() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) return null;
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.resolve(__dirname, '../dist')));
 
-// Health check
+// 健康检查
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), mode: 'production' });
 });
 
-// Auth - login (inline, no external imports except express/jwt/bcrypt used via eval)
+// 登录
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) { res.status(400).json({ error: '请输入账号和密码' }); return; }
-    const { createClient } = await import('@supabase/supabase-js');
-    const bcrypt = await import('bcryptjs');
-    const jwt = await import('jsonwebtoken');
-    const secret = process.env.JWT_SECRET || 'property-group-supervision-secret-key-2026';
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('users').select('*').eq('name', username).single();
       if (data && await bcrypt.compare(password, data.password_hash)) {
-        const token = jwt.sign({ userId: data.id, role: data.role }, secret, { expiresIn: '24h' });
+        const token = jwt.sign({ userId: data.id, role: data.role }, SECRET, { expiresIn: '24h' });
         res.json({ token, user: { id: data.id, name: data.name, role: data.role, avatar: data.avatar } });
         return;
       }
     }
-    // Fallback: admin/admin123
+
     if (username === 'admin' && password === 'admin123') {
-      const token = jwt.sign({ userId: 'USR-001', role: '集团超级管理员' }, secret, { expiresIn: '24h' });
+      const token = jwt.sign({ userId: 'USR-001', role: '集团超级管理员' }, SECRET, { expiresIn: '24h' });
       res.json({ token, user: { id: 'USR-001', name: '张建华', role: '集团超级管理员', avatar: '' } });
       return;
     }
@@ -48,22 +57,24 @@ app.post('/api/auth/login', async (req, res) => {
 // Dashboard stats
 app.get('/api/dashboard/stats', async (_req, res) => {
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('dashboard_stats').select('*').single();
       if (data) { res.json(data); return; }
     }
   } catch {}
-  res.json({ total_projects: 1284, project_growth: 12, security_rating: 98.4, security_trend: '+0.4%', compliance_rate: 92.1, compliance_trend: '-1.2%', active_alerts: 4, completed_inspections: 21, total_inspections: 25, coverage_rate: 84 });
+  res.json({
+    total_projects: 1284, project_growth: 12, security_rating: 98.4, security_trend: '+0.4%',
+    compliance_rate: 92.1, compliance_trend: '-1.2%', active_alerts: 4,
+    completed_inspections: 21, total_inspections: 25, coverage_rate: 84
+  });
 });
 
 // Inspections
 app.get('/api/inspections', async (_req, res) => {
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('inspections').select('*').order('id', { ascending: true });
       if (data && data.length > 0) { res.json(data); return; }
     }
@@ -78,9 +89,8 @@ app.get('/api/inspections', async (_req, res) => {
 // Alerts
 app.get('/api/alerts', async (_req, res) => {
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('alerts').select('*').eq('dismissed', false).order('created_at', { ascending: false });
       if (data && data.length > 0) { res.json(data); return; }
     }
@@ -96,9 +106,8 @@ app.get('/api/alerts', async (_req, res) => {
 // Nodes
 app.get('/api/nodes', async (_req, res) => {
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('nodes').select('*').order('id', { ascending: true });
       if (data && data.length > 0) { res.json(data); return; }
     }
@@ -113,35 +122,34 @@ app.get('/api/nodes', async (_req, res) => {
 
 // Logs
 app.get('/api/logs', async (_req, res) => {
+  const fallback = [
+    { id: 'L-001', title: '华东区域月度能耗数据同步完成', time: '12:44:02', operator: '系统自动执行', type: 'system' },
+    { id: 'L-002', title: '安全巡检基线校准完成', time: '12:31:15', operator: '系统自动执行', type: 'system' },
+    { id: 'L-003', title: '成都天府金融中心节点连接异常', time: '12:15:22', operator: '紧急系统告警', type: 'error' }
+  ];
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(50);
       if (data && data.length > 0) { res.json(data); return; }
     }
   } catch {}
-  res.json([
-    { id: 'L-001', title: '华东区域月度能耗数据同步完成', time: '12:44:02', operator: '系统自动执行', type: 'system' },
-    { id: 'L-002', title: '安全巡检基线校准完成', time: '12:31:15', operator: '系统自动执行', type: 'system' },
-    { id: 'L-003', title: '成都天府金融中心节点连接异常', time: '12:15:22', operator: '紧急系统告警', type: 'error' }
-  ]);
+  res.json(fallback);
 });
 
-// Org
+// Org tree
 app.get('/api/org', async (_req, res) => {
   try {
-    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+    const supabase = getSupabase();
+    if (supabase) {
       const { data } = await supabase.from('organizations').select('*').order('id', { ascending: true });
       if (data && data.length > 0) {
         const map = new Map(); let root = null;
         data.forEach(o => map.set(o.id, { id: o.id, name: o.name, role: o.role, leader: o.leader, phone: o.phone, email: o.email, status: o.status, children: [] }));
         data.forEach(o => {
-          const node = map.get(o.id);
-          if (o.parent_id && map.has(o.parent_id)) map.get(o.parent_id).children.push(node);
-          else if (!o.parent_id) root = node;
+          const n = map.get(o.id);
+          if (o.parent_id && map.has(o.parent_id)) map.get(o.parent_id).children.push(n);
+          else if (!o.parent_id) root = n;
         });
         function clean(n) { if (n.children && n.children.length === 0) delete n.children; else if (n.children) n.children = n.children.map(clean); return n; }
         if (root) { res.json(clean(root)); return; }
