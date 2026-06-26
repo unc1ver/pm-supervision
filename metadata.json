@@ -1,0 +1,6 @@
+{
+  "name": "集团综合监察系统",
+  "description": "集团综合监察系统，包含登录门户、全局数据概览、地区巡检管理中心、数据监察中心以及组织架构管理。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
